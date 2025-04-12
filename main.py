@@ -41,13 +41,29 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         except UnicodeDecodeError:
             body = str(body)
     
+    errors = []
+    for error in exc.errors():
+        error_dict = dict(error)
+        for key, value in error_dict.items():
+            if isinstance(value, bytes):
+                try:
+                    error_dict[key] = value.decode('utf-8')
+                except UnicodeDecodeError:
+                    error_dict[key] = str(value)
+        errors.append(error_dict)
+    
     return JSONResponse(
         status_code=422,
-        content={"detail": exc.errors(), "body": body},
+        content={"detail": errors, "body": body},
     )
 
 @app.post("/user-data/", response_model_exclude_unset=True)
-def process_user_data(request: UserRequest):
+async def process_user_data(request: UserRequest, raw_request: Request):
+    try:
+        raw_body = await raw_request.body()
+        print(f"Raw request body: {raw_body}")
+    except Exception as e:
+        print(f"Failed to read raw request: {str(e)}")
     
     print(f"Received request: {request}")
     wallet_address = request.personalData.walletAddress
@@ -75,11 +91,13 @@ def process_user_data(request: UserRequest):
         }
 
         try:
+            print(f"Sending payload to external API: {payload}")
             response = requests.post(
                 f"{EXISTING_SERVER_URL}/external",
                 json=payload
             )
             response.raise_for_status()
+            print(f"Response from external API: {response.status_code}")
         except requests.RequestException as e:
             print(f"Failed to send data to server: {str(e)}")
             # Continue even if the existing server is unreachable

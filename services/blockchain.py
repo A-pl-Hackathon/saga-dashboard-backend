@@ -19,7 +19,12 @@ token_contract = w3.eth.contract(address=MTK_CONTRACT_ADDRESS, abi=ERC20_ABI)
 def get_token_balance(wallet_address: str):
     # Special case for frontend requesting a new backend key without providing a real wallet
     if wallet_address == 'request_new_backend_key':
+        print("Special case: request_new_backend_key detected. Returning 0 balance.")
         return 0  # Return 0 balance for this special case
+    
+    if not wallet_address or not isinstance(wallet_address, str):
+        print(f"Invalid wallet address provided: {wallet_address}")
+        return 0
     
     try:
         checksum_address = w3.to_checksum_address(wallet_address)
@@ -28,6 +33,8 @@ def get_token_balance(wallet_address: str):
         balance_token = token_balance / (10 ** decimals)
         return balance_token
     except ValueError as e:
+        print(f"Invalid wallet address format: {wallet_address}. Error: {str(e)}")
         raise ValueError(f"Invalid wallet address format: {wallet_address}. Error: {str(e)}")
     except Exception as e:
+        print(f"Error checking token balance: {str(e)}")
         raise Exception(f"Error checking token balance: {str(e)}")
