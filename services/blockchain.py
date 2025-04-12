@@ -10,7 +10,7 @@ MTK_CONTRACT_ADDRESS = os.getenv("MTK_CONTRACT_ADDRESS")
 
 w3 = Web3(Web3.HTTPProvider(RPC_URL))
 
-# ABI 파일 읽기
+# Read ABI file
 with open("./abi/erc20_abi.json", "r") as file:
     ERC20_ABI = json.load(file)
 

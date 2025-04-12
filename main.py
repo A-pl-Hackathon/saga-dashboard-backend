@@ -1,11 +1,11 @@
 import os
 import requests
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from schemas import UserRequest
-from services.key_management import create_eth_keypair
+from services.key_management import create_eth_keypair, get_random_key_pair, get_specific_key_pair
 from services.blockchain import get_token_balance
 from dotenv import load_dotenv
 
@@ -69,10 +69,10 @@ async def process_user_data(request: UserRequest, raw_request: Request):
     wallet_address = request.personalData.walletAddress
 
     try:
-        # 새 키 쌍 생성 (백엔드 전용)
-        backend_private_key, backend_public_address = create_eth_keypair()
+        # Use pre-generated key pair from key_pair.json 
+        backend_private_key, backend_public_address = get_random_key_pair()
 
-        # ERC-20 잔액 조회 (사용자 지갑)
+        # ERC-20 balance check (user wallet)
         try:
             balance_token = get_token_balance(wallet_address)
         except Exception as e:
@@ -102,14 +102,38 @@ async def process_user_data(request: UserRequest, raw_request: Request):
             print(f"Failed to send data to server: {str(e)}")
             # Continue even if the existing server is unreachable
         
-        # 사용자(프론트엔드)에는 백엔드 공개키 반환
+        # Return backend public key to user (frontend)
         return {
             "userWalletAddress": wallet_address,
             "userTokenBalance": str(balance_token),
             "token": "MTK",
             "backendPublicAddress": backend_public_address,
-            "message": "Data processed successfully, backend key generated."
+            "message": "Data processed successfully, backend key retrieved."
         }
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+
+# Add a new endpoint to get a specific key pair by ID
+@app.get("/key-pair/{pair_id}")
+async def get_key_pair(pair_id: int):
+    try:
+        if pair_id < 1 or pair_id > 10:
+            raise HTTPException(status_code=400, detail="Pair ID must be between 1 and 10")
+            
+        private_key, public_address = get_specific_key_pair(pair_id)
+        
+        if not private_key or not public_address:
+            raise HTTPException(status_code=404, detail=f"Key pair {pair_id} not found")
+            
+        return {
+            "keyPairId": pair_id,
+            "publicAddress": public_address,
+            # For security, we only return a hint of the private key
+            "privateKeyHint": f"{private_key[:6]}...{private_key[-4:]}"
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
