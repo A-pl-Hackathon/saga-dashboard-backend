@@ -1,7 +1,7 @@
 import os
 import requests
 from fastapi import FastAPI, HTTPException
-from schemas.user_request import UserRequest
+from schemas import UserRequest
 from services.key_management import create_eth_keypair
 from services.blockchain import get_token_balance
 from dotenv import load_dotenv
