@@ -27,15 +27,19 @@ class UserRequest(BaseModel):
         ...,
         description="Agent model identifier"
     )
+    prompt: str = Field(
+        default="",
+        description="Optional prompt for the agent"
+    )
 
     class Config:
         schema_extra = {
             "example": {
-                "publicKey": "sample-public-key",
                 "personalData": {
                     "walletAddress": "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
                     "data": "user personal information"
                 },
-                "agentModel": "sample-agent-model"
+                "agentModel": "sample-agent-model",
+                "prompt": ""
             }
         }
