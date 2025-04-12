@@ -1,9 +1,11 @@
 import os
 import requests
+import uuid
 from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel
 from schemas import UserRequest
 from services.key_management import create_eth_keypair, get_random_key_pair, get_specific_key_pair
 from services.blockchain import get_token_balance
@@ -19,7 +21,8 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Add CORS middleware
+delegation_requests = {}
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -31,6 +34,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+class DelegationConfirmation(BaseModel):
+    request_id: str
+    confirmed: bool
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -80,17 +87,48 @@ async def process_user_data(request: UserRequest, raw_request: Request):
             # Just set balance to 0 and continue if there's an error
             balance_token = 0
 
-        payload = {
+        request_id = str(uuid.uuid4())
+        
+        delegation_requests[request_id] = {
             "personalData": {
                 "walletAddress": wallet_address,
                 "data": request.personalData.data
             },
             "agentModel": request.agentModel,
             "prompt": request.prompt,
-            "backendPrivateKey": backend_private_key
+            "backendPrivateKey": backend_private_key,
+            "backendPublicAddress": backend_public_address,
+            "userTokenBalance": str(balance_token)
         }
+        
+        return {
+            "requestId": request_id,
+            "userWalletAddress": wallet_address,
+            "userTokenBalance": str(balance_token),
+            "token": "MTK",
+            "backendPublicAddress": backend_public_address,
+            "message": "Please confirm delegation before proceeding."
+        }
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
+@app.post("/confirm-delegation/")
+async def confirm_delegation(confirmation: DelegationConfirmation):
+    if confirmation.request_id not in delegation_requests:
+        raise HTTPException(status_code=404, detail="Delegation request not found or expired")
+    
+    request_data = delegation_requests[confirmation.request_id]
+    
+    if confirmation.confirmed:
         try:
+            payload = {
+                "personalData": request_data["personalData"],
+                "agentModel": request_data["agentModel"],
+                "prompt": request_data["prompt"],
+                "backendPrivateKey": request_data["backendPrivateKey"]
+            }
+
             print(f"Sending payload to external API: {payload}")
             response = requests.post(
                 f"{EXISTING_SERVER_URL}/external",
@@ -98,21 +136,26 @@ async def process_user_data(request: UserRequest, raw_request: Request):
             )
             response.raise_for_status()
             print(f"Response from external API: {response.status_code}")
+            
+            return {
+                "success": True,
+                "userWalletAddress": request_data["personalData"]["walletAddress"],
+                "userTokenBalance": request_data["userTokenBalance"],
+                "token": "MTK",
+                "backendPublicAddress": request_data["backendPublicAddress"],
+                "message": "Delegation confirmed and data processed successfully."
+            }
         except requests.RequestException as e:
             print(f"Failed to send data to server: {str(e)}")
-            # Continue even if the existing server is unreachable
-        
-        # Return backend public key to user (frontend)
+            raise HTTPException(status_code=502, detail=f"Failed to communicate with external server: {str(e)}")
+        finally:
+            del delegation_requests[confirmation.request_id]
+    else:
+        del delegation_requests[confirmation.request_id]
         return {
-            "userWalletAddress": wallet_address,
-            "userTokenBalance": str(balance_token),
-            "token": "MTK",
-            "backendPublicAddress": backend_public_address,
-            "message": "Data processed successfully, backend key retrieved."
+            "success": False,
+            "message": "Delegation declined by user."
         }
-    except Exception as e:
-        print(f"Unexpected error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 # Add a new endpoint to get a specific key pair by ID
 @app.get("/key-pair/{pair_id}")
