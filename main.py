@@ -1,7 +1,7 @@
 import os
 import requests
 from fastapi import FastAPI, HTTPException
-from schemas import UserRequest
+from schemas.user_request import UserRequest
 from services.blockchain import get_token_balance
 from dotenv import load_dotenv
 
@@ -18,10 +18,11 @@ app = FastAPI(
     openapi_url="/openapi.json"
 )
 
-@app.post("/user-data/", summary="Process user data and get token balance", 
-         description="Processes user wallet data, retrieves token balance, and forwards data to external service")
+@app.post("/user-data/", summary="Process user data and get token balance",
+          description="Processes user wallet data, retrieves token balance, and forwards data to external service")
 def process_user_data(request: UserRequest):
-    wallet_address = request.personal_data.wallet_address
+
+    wallet_address = request.personalData.walletAddress
 
     # ERC-20 잔액 조회
     try:
@@ -29,13 +30,13 @@ def process_user_data(request: UserRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    # 기존 서버에 데이터 전송
+    # 기존 서버에 데이터 전송 (최종 Payload 형태)
     payload = {
-        "apiKey": request.apiKey,
-        "personal-data": {
-            "wallet-address": wallet_address,
-            "data": request.personal_data.data
-        }
+        "personalData": {
+            "walletAddress": wallet_address,
+            "data": request.personalData.data
+        },
+        "agentModel": request.agentModel
     }
 
     try:
@@ -48,8 +49,8 @@ def process_user_data(request: UserRequest):
         raise HTTPException(status_code=500, detail=f"Failed to send data: {e}")
 
     return {
-        "wallet_address": wallet_address,
-        "token_balance": str(balance_token),
+        "walletAddress": wallet_address,
+        "tokenBalance": str(balance_token),
         "token": "MTK",
         "message": "Data processed and forwarded successfully."
     }
